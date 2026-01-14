@@ -145,7 +145,7 @@ function sanitizeHtml(html: string, allowUnsafe = false) {
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["style", "script", "iframe", "object", "embed"],
-    FORBID_ATTR: [/^on/i],
+    FORBID_ATTR: [/^on/i] as any,
   });
 }
 
@@ -542,12 +542,12 @@ Welcome to **Nebula**, a next‑gen editor that keeps content in sync across:
 
 ### A code block
 
-```ts
+\`\`\`ts
 type NebulaNode = {
   id: string;
   kind: "heading" | "paragraph" | "list";
 };
-```
+\`\`\`
 
 ### A table
 
