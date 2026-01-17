@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { ThemeProvider } from '@/contexts/ThemeContext'
+import { ClientProviders } from '@/components/ClientProviders'
 
 export const metadata: Metadata = {
   title: 'Nebula Editor - Markdown ↔ NebulaXML',
@@ -15,7 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ClientProviders>
+          {children}
+        </ClientProviders>
       </body>
     </html>
   )

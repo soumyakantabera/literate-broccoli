@@ -39,6 +39,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { FormattingToolbar } from "@/components/FormattingToolbar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { FileExplorer } from "@/components/FileExplorer";
+import { useFileManager } from "@/contexts/FileManagerContext";
 
 import {
   AlertTriangle,
@@ -607,6 +609,19 @@ type Snapshot = { id: string; ts: string; markdown: string };
 export default function Nebula() {
   const monacoEditorRef = useRef<any>(null);
   const visualEditorRef = useRef<HTMLDivElement>(null);
+  
+  // File management - safely get context
+  let currentFile: any = null;
+  let updateFile: any = () => {};
+  
+  try {
+    const fileManager = useFileManager();
+    currentFile = fileManager.currentFile;
+    updateFile = fileManager.updateFile;
+  } catch (e) {
+    // FileManager not available yet, use defaults
+    console.log('FileManager not available, using defaults');
+  }
 
   const [docTitle, setDocTitle] = useState("Nebula Document");
   const [activeTab, setActiveTab] = useState<"visual" | "markdown" | "xml">("visual");
@@ -682,42 +697,15 @@ export default function Nebula() {
     }
   };
 
-  // Load
+  // Load current file from FileManager
   useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const data = raw ? safeJsonParse<any>(raw) : null;
-
-    if (!data) {
-      const initialXml = markdownToNebulaXml(DEFAULT_MD, docTitle, allowUnsafeHtml);
-      setXml(initialXml);
-      return;
+    if (currentFile) {
+      setDocTitle(currentFile.name);
+      setMarkdown(currentFile.markdown || DEFAULT_MD);
+      setXml(currentFile.xml || "");
+      setDirty(false);
     }
-
-    const title = typeof data.title === "string" ? data.title : "Nebula Document";
-    setDocTitle(title);
-
-    const savedXml = typeof data.xml === "string" ? data.xml : "";
-    if (savedXml) {
-      const { markdown: mdFromXml, error } = nebulaXmlToMarkdown(savedXml);
-      if (!error && mdFromXml) {
-        setMarkdown(mdFromXml);
-        setXml(xmlPretty(savedXml));
-      } else {
-        const md = typeof data.markdown === "string" ? data.markdown : DEFAULT_MD;
-        setMarkdown(md);
-        setXml(markdownToNebulaXml(md, title, allowUnsafeHtml));
-      }
-    } else {
-      const md = typeof data.markdown === "string" ? data.markdown : DEFAULT_MD;
-      setMarkdown(md);
-      setXml(markdownToNebulaXml(md, title, allowUnsafeHtml));
-    }
-
-    setHistory(Array.isArray(data.history) ? data.history : []);
-    setComments(Array.isArray(data.comments) ? data.comments : []);
-    setDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentFile?.id]); // Only reload when file ID changes
 
   // Keep XML in sync
   useEffect(() => {
@@ -765,18 +753,32 @@ export default function Nebula() {
     return td;
   }, []);
 
-  // Persistence
-  const persist = (next: any = {}) => {
-    const payload = { title: docTitle, markdown, xml, history, comments, ...next };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  };
+  // Auto-save to FileManager
+  useEffect(() => {
+    if (currentFile && dirty) {
+      const timeoutId = setTimeout(() => {
+        updateFile(currentFile.id, {
+          name: docTitle,
+          markdown,
+          xml,
+        });
+        setDirty(false);
+      }, 1000); // Auto-save after 1 second of inactivity
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [markdown, xml, docTitle, dirty, currentFile, updateFile]);
 
   const handleSave = () => {
-    const snap: Snapshot = { id: uuidv4(), ts: nowIso(), markdown };
-    const nextHistory = [snap, ...history].slice(0, 40);
-    setHistory(nextHistory);
-    setDirty(false);
-    persist({ history: nextHistory });
+    if (currentFile) {
+      // Force immediate save
+      updateFile(currentFile.id, {
+        name: docTitle,
+        markdown,
+        xml,
+      });
+      setDirty(false);
+    }
   };
 
   const restoreSnapshot = (snap: Snapshot) => {
@@ -842,14 +844,14 @@ export default function Nebula() {
     setComments(next);
     setSelectedCommentId(c.id);
     setCommentOpen(false);
-    persist({ comments: next });
+    setDirty(true); // Mark as dirty to trigger auto-save
   };
 
   const deleteComment = (id: string) => {
     const next = comments.filter((c) => c.id !== id);
     setComments(next);
     if (selectedCommentId === id) setSelectedCommentId(null);
-    persist({ comments: next });
+    setDirty(true); // Mark as dirty to trigger auto-save
   };
 
   const runFindReplace = (mode: "findNext" | "replaceAll") => {
@@ -899,13 +901,6 @@ export default function Nebula() {
       editor.focus();
     }
   };
-
-  // Auto-persist changes (throttled)
-  useEffect(() => {
-    const t = window.setTimeout(() => persist(), 400);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markdown, xml, docTitle, history, comments, allowUnsafeHtml]);
 
   // Command palette commands
   const commands = useMemo(() => {
@@ -1118,12 +1113,17 @@ export default function Nebula() {
             </CardHeader>
             <CardContent className="pt-0">
               {leftOpen ? (
-                <Tabs defaultValue="outline" className="w-full">
-                  <TabsList className="grid grid-cols-3 w-full">
+                <Tabs defaultValue="files" className="w-full">
+                  <TabsList className="grid grid-cols-4 w-full">
+                    <TabsTrigger value="files">Files</TabsTrigger>
                     <TabsTrigger value="outline">Outline</TabsTrigger>
                     <TabsTrigger value="history">History</TabsTrigger>
                     <TabsTrigger value="comments">Comments</TabsTrigger>
                   </TabsList>
+
+                  <TabsContent value="files" className="mt-3 h-[520px]">
+                    <FileExplorer />
+                  </TabsContent>
 
                   <TabsContent value="outline" className="mt-3">
                     <ScrollArea className="h-[520px] pr-3">
