@@ -37,6 +37,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { FormattingToolbar } from "@/components/FormattingToolbar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 import {
   AlertTriangle,
@@ -604,6 +606,7 @@ type Snapshot = { id: string; ts: string; markdown: string };
 
 export default function Nebula() {
   const monacoEditorRef = useRef<any>(null);
+  const visualEditorRef = useRef<HTMLDivElement>(null);
 
   const [docTitle, setDocTitle] = useState("Nebula Document");
   const [activeTab, setActiveTab] = useState<"visual" | "markdown" | "xml">("visual");
@@ -633,6 +636,51 @@ export default function Nebula() {
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
 
   const [xmlError, setXmlError] = useState<string | null>(null);
+
+  // Formatting handler for the visual editor
+  const handleFormat = (command: string, value?: string) => {
+    if (activeTab !== "visual") return;
+    
+    // Special handling for certain commands
+    if (command === "createLink") {
+      const url = prompt("Enter URL:");
+      if (url) {
+        document.execCommand(command, false, url);
+      }
+      return;
+    }
+    
+    if (command === "insertCheckbox") {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'mr-2';
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.insertNode(checkbox);
+      }
+      return;
+    }
+    
+    if (command === 'lineHeight' && value) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const parent = range.commonAncestorContainer.parentElement;
+        if (parent) {
+          parent.style.lineHeight = value;
+        }
+      }
+      return;
+    }
+    
+    // Standard execCommand
+    try {
+      document.execCommand(command, false, value);
+    } catch (e) {
+      console.error('Format command failed:', e);
+    }
+  };
 
   // Load
   useEffect(() => {
@@ -998,6 +1046,7 @@ export default function Nebula() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={() => setLeftOpen((v) => !v)} title="Toggle left panel">
               <PanelLeft className="h-4 w-4" />
             </Button>
@@ -1242,6 +1291,11 @@ export default function Nebula() {
                 <TabsContent value="visual" className="mt-3">
                   <div className="grid grid-cols-1 gap-3">
                     <div className="rounded-2xl border bg-background/60 overflow-hidden">
+                      {/* Add FormattingToolbar */}
+                      {activeTab === "visual" && (
+                        <FormattingToolbar onFormat={handleFormat} />
+                      )}
+                      
                       <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
                         <div className="text-xs text-muted-foreground">Visual Surface (contentEditable, roundtrips to Markdown)</div>
                         <div className="flex items-center gap-2">
@@ -1267,6 +1321,7 @@ export default function Nebula() {
                       </div>
 
                       <div
+                        ref={visualEditorRef}
                         className="nebula-prose p-5 min-h-[520px] outline-none"
                         contentEditable
                         suppressContentEditableWarning
