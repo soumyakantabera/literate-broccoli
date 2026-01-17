@@ -39,7 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { FormattingToolbar } from "@/components/FormattingToolbar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { FileExplorer } from "@/components/FileExplorer";
+import { SafeFileExplorer } from "@/components/SafeFileExplorer";
 import { useFileManager } from "@/contexts/FileManagerContext";
 
 import {
@@ -610,7 +610,7 @@ export default function Nebula() {
   const monacoEditorRef = useRef<any>(null);
   const visualEditorRef = useRef<HTMLDivElement>(null);
   
-  // File management - safely get context
+  // File management - with safe fallback
   let currentFile: any = null;
   let updateFile: any = () => {};
   
@@ -619,8 +619,7 @@ export default function Nebula() {
     currentFile = fileManager.currentFile;
     updateFile = fileManager.updateFile;
   } catch (e) {
-    // FileManager not available yet, use defaults
-    console.log('FileManager not available, using defaults');
+    // FileManager not available during SSR, will be available client-side
   }
 
   const [docTitle, setDocTitle] = useState("Nebula Document");
@@ -1122,7 +1121,7 @@ export default function Nebula() {
                   </TabsList>
 
                   <TabsContent value="files" className="mt-3 h-[520px]">
-                    <FileExplorer />
+                    <SafeFileExplorer />
                   </TabsContent>
 
                   <TabsContent value="outline" className="mt-3">
