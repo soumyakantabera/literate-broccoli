@@ -40,7 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { FormattingToolbar } from "@/components/FormattingToolbar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SafeFileExplorer } from "@/components/SafeFileExplorer";
-import { useFileManager } from "@/contexts/FileManagerContext";
+import { useFileManager, type NebulaFile } from "@/contexts/FileManagerContext";
 
 import {
   AlertTriangle,
@@ -611,8 +611,8 @@ export default function Nebula() {
   const visualEditorRef = useRef<HTMLDivElement>(null);
   
   // File management - with safe fallback
-  let currentFile: any = null;
-  let updateFile: any = () => {};
+  let currentFile: NebulaFile | null = null;
+  let updateFile: ((id: string, updates: Partial<NebulaFile>) => void) | (() => void) = () => {};
   
   try {
     const fileManager = useFileManager();

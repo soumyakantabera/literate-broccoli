@@ -150,7 +150,6 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
         } else {
           // Create a new default file if all files are deleted
           const defaultFile = createDefaultFile();
-          setFiles([defaultFile]);
           setCurrentFileId(defaultFile.id);
           return [defaultFile];
         }
@@ -221,7 +220,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
   };
 
   if (!mounted) {
-    return <>{children}</>;
+    return null;
   }
 
   return (
