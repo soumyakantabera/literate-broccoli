@@ -1104,8 +1104,18 @@ export default function Nebula() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm">{leftOpen ? "Navigator" : ""}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setFindOpen(true)} title="Find & Replace">
-                    <Search className="h-4 w-4" />
+                  {leftOpen && (
+                    <Button variant="ghost" size="icon" onClick={() => setFindOpen(true)} title="Find & Replace">
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setLeftOpen((v) => !v)} 
+                    title={leftOpen ? "Collapse Navigator" : "Expand Navigator"}
+                  >
+                    <PanelLeft className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -1226,11 +1236,18 @@ export default function Nebula() {
                   </TabsContent>
                 </Tabs>
               ) : (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Open">
-                    <PanelLeft className="h-4 w-4" />
-                  </Button>
+                <div className="flex flex-col items-center justify-center gap-2 py-8">
                   <div className="text-xs text-muted-foreground -rotate-90 whitespace-nowrap">Navigator</div>
+                  <Separator className="my-2" />
+                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Expand Navigator" className="hover:bg-accent">
+                    <FileText className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Expand Navigator" className="hover:bg-accent">
+                    <History className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Expand Navigator" className="hover:bg-accent">
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -1468,8 +1485,18 @@ export default function Nebula() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm">{rightOpen ? "Inspector" : ""}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setPaletteOpen(true)} title="Command palette">
-                    <Command className="h-4 w-4" />
+                  {rightOpen && (
+                    <Button variant="ghost" size="icon" onClick={() => setPaletteOpen(true)} title="Command palette">
+                      <Command className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setRightOpen((v) => !v)} 
+                    title={rightOpen ? "Collapse Inspector" : "Expand Inspector"}
+                  >
+                    <PanelRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -1548,11 +1575,18 @@ export default function Nebula() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Open">
-                    <PanelRight className="h-4 w-4" />
+                <div className="flex flex-col items-center justify-center gap-2 py-8">
+                  <div className="text-xs text-muted-foreground -rotate-90 whitespace-nowrap mb-4">Inspector</div>
+                  <Separator className="my-2" />
+                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Expand Inspector" className="hover:bg-accent">
+                    <CheckCircle2 className="h-4 w-4" />
                   </Button>
-                  <div className="text-xs text-muted-foreground -rotate-90 whitespace-nowrap">Inspector</div>
+                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Expand Inspector" className="hover:bg-accent">
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Expand Inspector" className="hover:bg-accent">
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </CardContent>
