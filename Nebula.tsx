@@ -37,6 +37,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { FormattingToolbar } from "@/components/FormattingToolbar";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { SafeFileExplorer } from "@/components/SafeFileExplorer";
+import { useFileManager, type NebulaFile } from "@/contexts/FileManagerContext";
 
 import {
   AlertTriangle,
@@ -604,6 +608,19 @@ type Snapshot = { id: string; ts: string; markdown: string };
 
 export default function Nebula() {
   const monacoEditorRef = useRef<any>(null);
+  const visualEditorRef = useRef<HTMLDivElement>(null);
+  
+  // File management - with safe fallback
+  let currentFile: NebulaFile | null = null;
+  let updateFile: ((id: string, updates: Partial<NebulaFile>) => void) | (() => void) = () => {};
+  
+  try {
+    const fileManager = useFileManager();
+    currentFile = fileManager.currentFile;
+    updateFile = fileManager.updateFile;
+  } catch (e) {
+    // FileManager not available during SSR, will be available client-side
+  }
 
   const [docTitle, setDocTitle] = useState("Nebula Document");
   const [activeTab, setActiveTab] = useState<"visual" | "markdown" | "xml">("visual");
@@ -634,42 +651,60 @@ export default function Nebula() {
 
   const [xmlError, setXmlError] = useState<string | null>(null);
 
-  // Load
-  useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const data = raw ? safeJsonParse<any>(raw) : null;
-
-    if (!data) {
-      const initialXml = markdownToNebulaXml(DEFAULT_MD, docTitle, allowUnsafeHtml);
-      setXml(initialXml);
+  // Formatting handler for the visual editor
+  const handleFormat = (command: string, value?: string) => {
+    if (activeTab !== "visual") return;
+    
+    // Special handling for certain commands
+    if (command === "createLink") {
+      const url = prompt("Enter URL:");
+      if (url) {
+        document.execCommand(command, false, url);
+      }
       return;
     }
-
-    const title = typeof data.title === "string" ? data.title : "Nebula Document";
-    setDocTitle(title);
-
-    const savedXml = typeof data.xml === "string" ? data.xml : "";
-    if (savedXml) {
-      const { markdown: mdFromXml, error } = nebulaXmlToMarkdown(savedXml);
-      if (!error && mdFromXml) {
-        setMarkdown(mdFromXml);
-        setXml(xmlPretty(savedXml));
-      } else {
-        const md = typeof data.markdown === "string" ? data.markdown : DEFAULT_MD;
-        setMarkdown(md);
-        setXml(markdownToNebulaXml(md, title, allowUnsafeHtml));
+    
+    if (command === "insertCheckbox") {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'mr-2';
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.insertNode(checkbox);
       }
-    } else {
-      const md = typeof data.markdown === "string" ? data.markdown : DEFAULT_MD;
-      setMarkdown(md);
-      setXml(markdownToNebulaXml(md, title, allowUnsafeHtml));
+      return;
     }
+    
+    if (command === 'lineHeight' && value) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const parent = range.commonAncestorContainer.parentElement;
+        if (parent) {
+          parent.style.lineHeight = value;
+        }
+      }
+      return;
+    }
+    
+    // Standard execCommand
+    try {
+      document.execCommand(command, false, value);
+    } catch (e) {
+      console.error('Format command failed:', e);
+    }
+  };
 
-    setHistory(Array.isArray(data.history) ? data.history : []);
-    setComments(Array.isArray(data.comments) ? data.comments : []);
-    setDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Load current file from FileManager
+  useEffect(() => {
+    if (currentFile) {
+      setDocTitle(currentFile.name);
+      setMarkdown(currentFile.markdown || DEFAULT_MD);
+      setXml(currentFile.xml || "");
+      setDirty(false);
+    }
+  }, [currentFile?.id]); // Only reload when file ID changes
 
   // Keep XML in sync
   useEffect(() => {
@@ -717,18 +752,32 @@ export default function Nebula() {
     return td;
   }, []);
 
-  // Persistence
-  const persist = (next: any = {}) => {
-    const payload = { title: docTitle, markdown, xml, history, comments, ...next };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  };
+  // Auto-save to FileManager
+  useEffect(() => {
+    if (currentFile && dirty) {
+      const timeoutId = setTimeout(() => {
+        updateFile(currentFile.id, {
+          name: docTitle,
+          markdown,
+          xml,
+        });
+        setDirty(false);
+      }, 1000); // Auto-save after 1 second of inactivity
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [markdown, xml, docTitle, dirty, currentFile, updateFile]);
 
   const handleSave = () => {
-    const snap: Snapshot = { id: uuidv4(), ts: nowIso(), markdown };
-    const nextHistory = [snap, ...history].slice(0, 40);
-    setHistory(nextHistory);
-    setDirty(false);
-    persist({ history: nextHistory });
+    if (currentFile) {
+      // Force immediate save
+      updateFile(currentFile.id, {
+        name: docTitle,
+        markdown,
+        xml,
+      });
+      setDirty(false);
+    }
   };
 
   const restoreSnapshot = (snap: Snapshot) => {
@@ -794,14 +843,14 @@ export default function Nebula() {
     setComments(next);
     setSelectedCommentId(c.id);
     setCommentOpen(false);
-    persist({ comments: next });
+    setDirty(true); // Mark as dirty to trigger auto-save
   };
 
   const deleteComment = (id: string) => {
     const next = comments.filter((c) => c.id !== id);
     setComments(next);
     if (selectedCommentId === id) setSelectedCommentId(null);
-    persist({ comments: next });
+    setDirty(true); // Mark as dirty to trigger auto-save
   };
 
   const runFindReplace = (mode: "findNext" | "replaceAll") => {
@@ -851,13 +900,6 @@ export default function Nebula() {
       editor.focus();
     }
   };
-
-  // Auto-persist changes (throttled)
-  useEffect(() => {
-    const t = window.setTimeout(() => persist(), 400);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markdown, xml, docTitle, history, comments, allowUnsafeHtml]);
 
   // Command palette commands
   const commands = useMemo(() => {
@@ -998,6 +1040,7 @@ export default function Nebula() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={() => setLeftOpen((v) => !v)} title="Toggle left panel">
               <PanelLeft className="h-4 w-4" />
             </Button>
@@ -1061,20 +1104,35 @@ export default function Nebula() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm">{leftOpen ? "Navigator" : ""}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setFindOpen(true)} title="Find & Replace">
-                    <Search className="h-4 w-4" />
+                  {leftOpen && (
+                    <Button variant="ghost" size="icon" onClick={() => setFindOpen(true)} title="Find & Replace">
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setLeftOpen((v) => !v)} 
+                    title={leftOpen ? "Collapse Navigator" : "Expand Navigator"}
+                  >
+                    <PanelLeft className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
               {leftOpen ? (
-                <Tabs defaultValue="outline" className="w-full">
-                  <TabsList className="grid grid-cols-3 w-full">
+                <Tabs defaultValue="files" className="w-full">
+                  <TabsList className="grid grid-cols-4 w-full">
+                    <TabsTrigger value="files">Files</TabsTrigger>
                     <TabsTrigger value="outline">Outline</TabsTrigger>
                     <TabsTrigger value="history">History</TabsTrigger>
                     <TabsTrigger value="comments">Comments</TabsTrigger>
                   </TabsList>
+
+                  <TabsContent value="files" className="mt-3 h-[520px]">
+                    <SafeFileExplorer />
+                  </TabsContent>
 
                   <TabsContent value="outline" className="mt-3">
                     <ScrollArea className="h-[520px] pr-3">
@@ -1178,11 +1236,18 @@ export default function Nebula() {
                   </TabsContent>
                 </Tabs>
               ) : (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Open">
-                    <PanelLeft className="h-4 w-4" />
-                  </Button>
+                <div className="flex flex-col items-center justify-center gap-2 py-8">
                   <div className="text-xs text-muted-foreground -rotate-90 whitespace-nowrap">Navigator</div>
+                  <Separator className="my-2" />
+                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Expand Navigator" className="hover:bg-accent">
+                    <FileText className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Expand Navigator" className="hover:bg-accent">
+                    <History className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setLeftOpen(true)} title="Expand Navigator" className="hover:bg-accent">
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -1242,6 +1307,11 @@ export default function Nebula() {
                 <TabsContent value="visual" className="mt-3">
                   <div className="grid grid-cols-1 gap-3">
                     <div className="rounded-2xl border bg-background/60 overflow-hidden">
+                      {/* Add FormattingToolbar */}
+                      {activeTab === "visual" && (
+                        <FormattingToolbar onFormat={handleFormat} />
+                      )}
+                      
                       <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
                         <div className="text-xs text-muted-foreground">Visual Surface (contentEditable, roundtrips to Markdown)</div>
                         <div className="flex items-center gap-2">
@@ -1267,6 +1337,7 @@ export default function Nebula() {
                       </div>
 
                       <div
+                        ref={visualEditorRef}
                         className="nebula-prose p-5 min-h-[520px] outline-none"
                         contentEditable
                         suppressContentEditableWarning
@@ -1414,8 +1485,18 @@ export default function Nebula() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm">{rightOpen ? "Inspector" : ""}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setPaletteOpen(true)} title="Command palette">
-                    <Command className="h-4 w-4" />
+                  {rightOpen && (
+                    <Button variant="ghost" size="icon" onClick={() => setPaletteOpen(true)} title="Command palette">
+                      <Command className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setRightOpen((v) => !v)} 
+                    title={rightOpen ? "Collapse Inspector" : "Expand Inspector"}
+                  >
+                    <PanelRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -1494,11 +1575,18 @@ export default function Nebula() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Open">
-                    <PanelRight className="h-4 w-4" />
+                <div className="flex flex-col items-center justify-center gap-2 py-8">
+                  <div className="text-xs text-muted-foreground -rotate-90 whitespace-nowrap mb-4">Inspector</div>
+                  <Separator className="my-2" />
+                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Expand Inspector" className="hover:bg-accent">
+                    <CheckCircle2 className="h-4 w-4" />
                   </Button>
-                  <div className="text-xs text-muted-foreground -rotate-90 whitespace-nowrap">Inspector</div>
+                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Expand Inspector" className="hover:bg-accent">
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setRightOpen(true)} title="Expand Inspector" className="hover:bg-accent">
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
             </CardContent>
